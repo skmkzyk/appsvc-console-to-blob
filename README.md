@@ -61,9 +61,7 @@ uv pip install -r requirements.txt
     "FUNCTIONS_WORKER_RUNTIME": "python",
     "EventHubConnection": "<Event Hub 接続文字列>",
     "EVENTHUB_NAME": "<Event Hub 名>",
-    "LOG_STORAGE_CONNECTION": "<Blob Storage 接続文字列>",
-    "LOG_CONTAINER_PREFIX": "logs-",
-    "LOG_BLOB_BASENAME": "console.ndjson"
+    "LOG_STORAGE_CONNECTION": "<Blob Storage 接続文字列>"
   }
 }
 ```
