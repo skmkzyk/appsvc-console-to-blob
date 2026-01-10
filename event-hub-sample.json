@@ -1,0 +1,34 @@
+{
+    "records": [
+        {
+            "time": "2026-01-10T09:42:44.1247217Z",
+            "resultDescription": "[2026-01-10 09:42:44,124] INFO in app: {\"ts\":\"2026-01-10T09:42:44.124389+00:00\",\"req_id\":\"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx\",\"method\":\"GET\",\"path\":\"/\",\"remote_addr\":\"169.254.129.1\",\"headers\":{\"Accept\":\"*/*\",\"Host\":\"app-example-region01-xxxxxxxxxxxx.region-01.azurewebsites.net\",\"User-Agent\":\"Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; Trident/5.0; AppInsights)\",\"Accept-Encoding\":\"GZIP\",\"Accept-Language\":\"en-US\",\"Max-Forwards\":\"10\",\"Request-Id\":\"|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.0\",\"Traceparent\":\"00-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx-xxxxxxxxxxxxxxxx-01\",\"Via\":\"HTTP/1.1 Azure\",\"X-Forwarded-For\":\"10.0.0.1, 10.0.0.2:47608\",\"X-Forwarded-Host\":\"example.com\",\"X-Forwarded-Proto\":\"https\",\"X-Azure-Fdid\":\"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx\",\"X-Azure-Ja4-Fingerprint\":\"xxxxxxxxxxxx_xxxxxxxxxxxx_xxxxxxxxxxxx\",\"X-Ms-User-Agent\":\"Azure Application Insights\",\"Synthetictest-Id\":\"default_avtest-example-appi-example-region_region-location\",\"Synthetictest-Location\":\"region-location\",\"Synthetictest-Runid\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"Request-Context\":\"appId=cid-v1:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx\",\"X-Azure-Ref\":\"20260110T094243Z-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"X-Azure-Clientip\":\"10.0.0.1\",\"X-Azure-Socketip\":\"10.0.0.1\",\"X-Azure-Requestchainv2\":\"hops=1\",\"X-Arr-Log-Id\":\"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx\",\"Client-Ip\":\"10.0.0.2:47608\",\"Disguised-Host\":\"app-example-region01-xxxxxxxxxxxx.region-01.azurewebsites.net\",\"X-Site-Deployment-Id\":\"app-example-region01\",\"Was-Default-Hostname\":\"app-example-region01-xxxxxxxxxxxx.region-01.azurewebsites.net\",\"X-Appservice-Proto\":\"https\",\"X-Arr-Ssl\":\"2048|256|CN=Microsoft Azure RSA TLS Issuing CA 08, O=Microsoft Corporation, C=US|CN=*.azurewebsites.net, O=Microsoft Corporation, L=Redmond, S=WA, C=US\",\"X-Forwarded-Tlsversion\":\"1.3\",\"X-Original-Url\":\"/\",\"X-Waws-Unencoded-Url\":\"/\",\"X-Client-Ip\":\"10.0.0.2\",\"X-Client-Port\":\"47608\"}}",
+            "resourceId": "/SUBSCRIPTIONS/XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX/RESOURCEGROUPS/EXAMPLE-RG/PROVIDERS/MICROSOFT.WEB/SITES/APP-EXAMPLE-REGION01",
+            "level": "Error",
+            "operationName": "Microsoft.Web/sites/log",
+            "containerId": "xxxxxxxxxxxx_app-example-region01",
+            "location": "Japan East",
+            "category": "AppServiceConsoleLogs",
+            "EventStampType": "Stamp",
+            "EventPrimaryStampName": "waws-prod-region-001",
+            "EventStampName": "waws-prod-region-001",
+            "Host": "lnxxxxxxxx0000XX",
+            "EventIpAddress": "10.0.0.100"
+        },
+        {
+            "time": "2026-01-10T09:42:54.9498952Z",
+            "resultDescription": "[2026-01-10 09:42:54,949] INFO in app: {\"ts\":\"2026-01-10T09:42:54.949567+00:00\",\"req_id\":\"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx\",\"method\":\"HEAD\",\"path\":\"/\",\"remote_addr\":\"169.254.129.1\",\"headers\":{\"Host\":\"app-example-region01-xxxxxxxxxxxx.region-01.azurewebsites.net\",\"User-Agent\":\"Edge Health Probe\",\"Max-Forwards\":\"10\",\"X-Azure-Fdid\":\"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx\",\"X-Fd-Healthprobe\":\"1\",\"X-Arr-Log-Id\":\"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx\",\"Client-Ip\":\"10.0.0.3:43812\",\"Disguised-Host\":\"app-example-region01-xxxxxxxxxxxx.region-01.azurewebsites.net\",\"X-Site-Deployment-Id\":\"app-example-region01\",\"Was-Default-Hostname\":\"app-example-region01-xxxxxxxxxxxx.region-01.azurewebsites.net\",\"X-Forwarded-Proto\":\"https\",\"X-Appservice-Proto\":\"https\",\"X-Arr-Ssl\":\"2048|256|CN=Microsoft Azure RSA TLS Issuing CA 08, O=Microsoft Corporation, C=US|CN=*.azurewebsites.net, O=Microsoft Corporation, L=Redmond, S=WA, C=US\",\"X-Forwarded-Tlsversion\":\"1.3\",\"X-Forwarded-For\":\"10.0.0.3:43812\",\"X-Original-Url\":\"/\",\"X-Waws-Unencoded-Url\":\"/\",\"X-Client-Ip\":\"10.0.0.3\",\"X-Client-Port\":\"43812\"}}",
+            "resourceId": "/SUBSCRIPTIONS/XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX/RESOURCEGROUPS/EXAMPLE-RG/PROVIDERS/MICROSOFT.WEB/SITES/APP-EXAMPLE-REGION01",
+            "level": "Error",
+            "operationName": "Microsoft.Web/sites/log",
+            "containerId": "xxxxxxxxxxxx_app-example-region01",
+            "location": "Japan East",
+            "category": "AppServiceConsoleLogs",
+            "EventStampType": "Stamp",
+            "EventPrimaryStampName": "waws-prod-region-001",
+            "EventStampName": "waws-prod-region-001",
+            "Host": "lnxxxxxxxx0000XX",
+            "EventIpAddress": "10.0.0.100"
+        }
+    ]
+}
