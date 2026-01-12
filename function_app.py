@@ -338,6 +338,9 @@ def get_partition_id(evt: func.EventHubEvent) -> Optional[str]:
     """
     Best-effort extraction of partition ID from EventHubEvent metadata.
     Exact keys can vary by runtime; handle defensively.
+    
+    The Azure Functions runtime provides partition context in the trigger metadata
+    as a nested structure: metadata['PartitionContext']['PartitionId']
     """
     try:
         md = evt.metadata  # type: ignore[attr-defined]
@@ -347,11 +350,22 @@ def get_partition_id(evt: func.EventHubEvent) -> Optional[str]:
     if not isinstance(md, dict):
         return None
 
-    # Common candidates (defensive)
+    # Check nested PartitionContext structure (Azure Functions runtime standard)
+    partition_context = md.get("PartitionContext")
+    if isinstance(partition_context, dict):
+        partition_id = partition_context.get("PartitionId")
+        if partition_id is not None:
+            return str(partition_id)
+    
+    # Fallback: Check for flat keys (for compatibility with different runtime versions)
     for k in ("PartitionId", "partitionId", "x-opt-partition-id", "partition_id"):
         v = md.get(k)
         if v is not None:
             return str(v)
+    
+    # Log metadata keys for debugging when partition ID is not found
+    logging.debug("Partition ID not found in metadata. Available keys: %s", list(md.keys()))
+    
     return None
 
 
