@@ -152,6 +152,31 @@ def pick_message(record: Dict[str, Any]) -> str:
     return json.dumps(record, ensure_ascii=False, separators=(",", ":"))
 
 
+def extract_record_time(record: Dict[str, Any]) -> Optional[datetime]:
+    """
+    Extract the timestamp from a record.
+    Looks for 'time', 'Time', 'timestamp', or 'Timestamp' fields.
+    Returns None if no valid timestamp is found.
+    """
+    for k in ("time", "Time", "timestamp", "Timestamp"):
+        v = record.get(k)
+        if isinstance(v, str) and v.strip():
+            try:
+                # Parse ISO 8601 format timestamps
+                # Handle both with and without timezone info
+                if v.endswith('Z'):
+                    return datetime.fromisoformat(v.replace('Z', '+00:00'))
+                else:
+                    dt = datetime.fromisoformat(v)
+                    # If no timezone, assume UTC
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    return dt
+            except (ValueError, AttributeError):
+                pass  # Try next field or return None
+    return None
+
+
 # =============================================================================
 # FQDN -> container naming
 # =============================================================================
@@ -377,36 +402,42 @@ def main(evt: func.EventHubEvent):
     Event Hub Trigger:
       - Parse incoming payload to records
       - Extract FQDN from message ("Host: ...")
+      - Extract timestamp from each record
       - Upload as compressed NDJSON to Block Blob with Hive-style partitioning
+      - Records with different hours are split into separate files
     """
     raw = evt.get_body().decode("utf-8", errors="replace")
     records = extract_records(raw)
 
-    now_utc = datetime.now(timezone.utc)
     partition_id = get_partition_id(evt)
     offset, sequence_number = get_offset_info(evt)
     
-    # Use offset and sequence for file naming
-    # For batch processing, use the first offset as start and last as end
-    # In Event Hub triggers, each event typically has a single offset
-    start_offset = offset
-    end_offset = offset
+    # Fallback timestamp for records without valid timestamps
+    now_utc = datetime.now(timezone.utc)
     
-    blob_name = blob_name_with_offsets(now_utc, partition_id, start_offset, end_offset)
-
-    # Group records by FQDN for efficient batch uploads
-    records_by_fqdn: Dict[str, List[Dict[str, Any]]] = {}
+    # Group records by (FQDN, timestamp_hour) for proper Hive partitioning
+    # Key: (fqdn, timestamp_hour_string)
+    records_by_fqdn_and_hour: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
     
     for r in records:
         msg = pick_message(r)
         fqdn = extract_fqdn(r, msg)
         
-        if fqdn not in records_by_fqdn:
-            records_by_fqdn[fqdn] = []
+        # Extract timestamp from record, fall back to current time
+        record_time = extract_record_time(r)
+        if record_time is None:
+            record_time = now_utc
+        
+        # Generate hour key for grouping (ensures records from same hour go together)
+        hour_key = record_time.strftime("%Y-%m-%d-%H")
+        
+        group_key = (fqdn, hour_key)
+        if group_key not in records_by_fqdn_and_hour:
+            records_by_fqdn_and_hour[group_key] = []
         
         # Build line object
         line_obj = {
-            "time_utc": now_utc.isoformat(),
+            "time_utc": record_time.isoformat(),
             "fqdn": fqdn,
             "partition_id": partition_id,
             "offset": offset,
@@ -414,26 +445,37 @@ def main(evt: func.EventHubEvent):
             "message": msg,
             "record": r,  # Remove if you want smaller output
         }
-        records_by_fqdn[fqdn].append(line_obj)
+        records_by_fqdn_and_hour[group_key].append(line_obj)
 
-    # Upload one blob per FQDN
-    # Note: Same blob_name is used across different FQDNs, but each FQDN has its own container,
-    # so there are no naming collisions (containers provide namespace isolation)
-    for fqdn, fqdn_records in records_by_fqdn.items():
+    # Upload one blob per (FQDN, hour) combination
+    # This ensures records from different hours are split into separate files
+    for (fqdn, hour_key), fqdn_hour_records in records_by_fqdn_and_hour.items():
         container = to_container_name(fqdn)
         ensure_container(container)
         
+        # Use the timestamp of the first record in the group for blob naming
+        # All records in this group are from the same hour
+        first_record_time = datetime.fromisoformat(fqdn_hour_records[0]["time_utc"])
+        
+        # Use offset and sequence for file naming
+        # For batch processing, use the first offset as start and last as end
+        # In Event Hub triggers, each event typically has a single offset
+        start_offset = offset
+        end_offset = offset
+        
+        blob_name = blob_name_with_offsets(first_record_time, partition_id, start_offset, end_offset)
+        
         # Build NDJSON content
-        lines = [json.dumps(line_obj, ensure_ascii=False) for line_obj in fqdn_records]
+        lines = [json.dumps(line_obj, ensure_ascii=False) for line_obj in fqdn_hour_records]
         content = "\n".join(lines) + "\n"
         
         # Upload compressed blob
         upload_compressed_blob(container, blob_name, content)
 
     logging.info(
-        "Processed %d record(s) across %d FQDN(s). partition=%s offset=%s",
+        "Processed %d record(s) across %d group(s) (FQDN+hour). partition=%s offset=%s",
         len(records),
-        len(records_by_fqdn),
+        len(records_by_fqdn_and_hour),
         partition_id,
         offset,
     )
