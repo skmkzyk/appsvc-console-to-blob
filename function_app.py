@@ -264,9 +264,10 @@ def blob_name_with_offsets(
         end = end_offset
     else:
         # Fallback: use timestamp for uniqueness when offset is unavailable
-        timestamp_id = now_utc.strftime("%Y%m%d%H%M%S%f")
-        start = timestamp_id
-        end = timestamp_id
+        # Using milliseconds precision for shorter, more readable filenames
+        timestamp_ms = now_utc.strftime("%Y%m%d%H%M%S") + str(now_utc.microsecond // 1000).zfill(3)
+        start = timestamp_ms
+        end = timestamp_ms
     
     filename = f"part-o{start}-o{end}.ndjson.gz"
     
@@ -416,6 +417,8 @@ def main(evt: func.EventHubEvent):
         records_by_fqdn[fqdn].append(line_obj)
 
     # Upload one blob per FQDN
+    # Note: Same blob_name is used across different FQDNs, but each FQDN has its own container,
+    # so there are no naming collisions (containers provide namespace isolation)
     for fqdn, fqdn_records in records_by_fqdn.items():
         container = to_container_name(fqdn)
         ensure_container(container)
