@@ -44,13 +44,6 @@ LOG_STORAGE_MI_CLIENT_ID = os.getenv("LOG_STORAGE_MANAGED_IDENTITY_CLIENT_ID")
 # Container name prefix (e.g., logs-)
 CONTAINER_PREFIX = os.getenv("LOG_CONTAINER_PREFIX", "logs-")
 
-# Append into a daily blob path
-BLOB_BASENAME = os.getenv("LOG_BLOB_BASENAME", "console.ndjson")
-
-# Option: shard blobs by Event Hub partition ID to reduce contention (recommended at higher throughput)
-# Set to "1" or "true" to enable.
-SHARD_BY_PARTITION = os.getenv("LOG_BLOB_SHARD_BY_PARTITION", "0").lower() in ("1", "true", "yes")
-
 # Host extraction pattern:
 # Assumes your App Service writes a dedicated line such as:
 #   Host: example.com
@@ -64,9 +57,6 @@ HOST_REGEX = re.compile(r"(?i)\bhost\b\s*[:=]\s*\"?([^\"\s,;]+)")
 # - 3-63 chars
 NON_ALLOWED = re.compile(r"[^a-z0-9-]+")
 MULTI_HYPHEN = re.compile(r"-{2,}")
-
-# AppendBlock size limit: keep chunks within ~4MiB
-APPEND_CHUNK_BYTES = 4 * 1024 * 1024
 
 # Cached clients
 _blob_svc: Optional[BlobServiceClient] = None
