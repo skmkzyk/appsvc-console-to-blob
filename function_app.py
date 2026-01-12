@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import gzip
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -43,13 +44,6 @@ LOG_STORAGE_MI_CLIENT_ID = os.getenv("LOG_STORAGE_MANAGED_IDENTITY_CLIENT_ID")
 # Container name prefix (e.g., logs-)
 CONTAINER_PREFIX = os.getenv("LOG_CONTAINER_PREFIX", "logs-")
 
-# Append into a daily blob path
-BLOB_BASENAME = os.getenv("LOG_BLOB_BASENAME", "console.ndjson")
-
-# Option: shard blobs by Event Hub partition ID to reduce contention (recommended at higher throughput)
-# Set to "1" or "true" to enable.
-SHARD_BY_PARTITION = os.getenv("LOG_BLOB_SHARD_BY_PARTITION", "0").lower() in ("1", "true", "yes")
-
 # Host extraction pattern:
 # Assumes your App Service writes a dedicated line such as:
 #   Host: example.com
@@ -63,9 +57,6 @@ HOST_REGEX = re.compile(r"(?i)\bhost\b\s*[:=]\s*\"?([^\"\s,;]+)")
 # - 3-63 chars
 NON_ALLOWED = re.compile(r"[^a-z0-9-]+")
 MULTI_HYPHEN = re.compile(r"-{2,}")
-
-# AppendBlock size limit: keep chunks within ~4MiB
-APPEND_CHUNK_BYTES = 4 * 1024 * 1024
 
 # Cached clients
 _blob_svc: Optional[BlobServiceClient] = None
@@ -161,6 +152,31 @@ def pick_message(record: Dict[str, Any]) -> str:
     return json.dumps(record, ensure_ascii=False, separators=(",", ":"))
 
 
+def extract_record_time(record: Dict[str, Any]) -> Optional[datetime]:
+    """
+    Extract the timestamp from a record.
+    Looks for 'time', 'Time', 'timestamp', or 'Timestamp' fields.
+    Returns None if no valid timestamp is found.
+    """
+    for k in ("time", "Time", "timestamp", "Timestamp"):
+        v = record.get(k)
+        if isinstance(v, str) and v.strip():
+            try:
+                # Parse ISO 8601 format timestamps
+                # Handle both with and without timezone info
+                if v.endswith('Z'):
+                    return datetime.fromisoformat(v.replace('Z', '+00:00'))
+                else:
+                    dt = datetime.fromisoformat(v)
+                    # If no timezone, assume UTC
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    return dt
+            except (ValueError, AttributeError):
+                pass  # Try next field or return None
+    return None
+
+
 # =============================================================================
 # FQDN -> container naming
 # =============================================================================
@@ -231,15 +247,59 @@ def to_container_name(fqdn: str) -> str:
 # =============================================================================
 # Blob naming and append helpers
 # =============================================================================
-def daily_blob_name(now_utc: datetime, partition_id: Optional[str]) -> str:
+def blob_name_with_offsets(
+    now_utc: datetime, 
+    partition_id: Optional[str], 
+    start_offset: Optional[str],
+    end_offset: Optional[str]
+) -> str:
     """
-    Generate a daily blob path.
-    - Default:  YYYY/MM/DD/console.ndjson
-    - Sharded:  YYYY/MM/DD/p<partition>/console.ndjson
+    Generate a blob path with Hive-style partitioning and offset-based naming.
+    Format: y=YYYY/m=MM/d=DD/h=HH/m=00/p=<partition>/part-o<startOffset>-o<endOffset>.ndjson.gz
+    
+    Args:
+        now_utc: Current UTC datetime
+        partition_id: Event Hub partition ID
+        start_offset: Starting offset of the batch (for single events, same as end_offset)
+        end_offset: Ending offset of the batch (for single events, same as start_offset)
+    
+    Returns:
+        Blob path string
+    
+    Notes:
+        - The minute directory is fixed at '00' to aggregate all events within the same hour
+        - For single Event Hub events, start_offset and end_offset will be identical
+        - Using 'unknown' for missing offsets will fall back to timestamp-based identification
     """
-    if SHARD_BY_PARTITION and partition_id:
-        return f"{now_utc:%Y/%m/%d}/p{partition_id}/{BLOB_BASENAME}"
-    return f"{now_utc:%Y/%m/%d}/{BLOB_BASENAME}"
+    # Hive-style partitioning
+    year = now_utc.strftime("%Y")
+    month = now_utc.strftime("%m")
+    day = now_utc.strftime("%d")
+    hour = now_utc.strftime("%H")
+    
+    # Fixed minute directory (aggregates all events within the hour)
+    minute = "00"
+    
+    # Partition ID (use "unknown" if not available)
+    partition = partition_id if partition_id else "unknown"
+    
+    # Offset-based filename with timestamp fallback for uniqueness
+    if start_offset and end_offset:
+        start = start_offset
+        end = end_offset
+    else:
+        # Fallback: use timestamp for uniqueness when offset is unavailable
+        # Using milliseconds precision for shorter, more readable filenames
+        timestamp_ms = now_utc.strftime("%Y%m%d%H%M%S") + str(now_utc.microsecond // 1000).zfill(3)
+        start = timestamp_ms
+        end = timestamp_ms
+    
+    filename = f"part-o{start}-o{end}.ndjson.gz"
+    
+    # Build the full path
+    path = f"y={year}/m={month}/d={day}/h={hour}/m={minute}/p={partition}/{filename}"
+    
+    return path
 
 
 def ensure_container(container_name: str):
@@ -252,25 +312,26 @@ def ensure_container(container_name: str):
     return cc
 
 
-def ensure_append_blob(container_name: str, blob_name: str):
+def upload_compressed_blob(container_name: str, blob_name: str, content: str) -> None:
     """
-    Ensure the target blob exists as an Append Blob.
-    Guard with exists() because create_append_blob is not idempotent.
+    Upload gzip-compressed content to a Block Blob.
+    
+    Args:
+        container_name: Target container name
+        blob_name: Target blob path
+        content: Text content to compress and upload
+    
+    Notes:
+        - Uses overwrite=True for idempotency in case of function retries
+        - Each FQDN uses a separate container, so blob_name collisions only occur
+          for the same FQDN with the same offset, which indicates a retry
     """
+    # Compress the content
+    compressed_data = gzip.compress(content.encode("utf-8"))
+    
+    # Upload as block blob (overwrite for idempotency)
     bc = blob_service_client().get_blob_client(container=container_name, blob=blob_name)
-    if not bc.exists():
-        bc.create_append_blob()
-    return bc
-
-
-def append_text(append_blob_client, text: str) -> None:
-    """
-    Append UTF-8 text to an Append Blob.
-    Split into <= ~4MiB chunks to stay within append block limits.
-    """
-    data = text.encode("utf-8")
-    for i in range(0, len(data), APPEND_CHUNK_BYTES):
-        append_blob_client.append_block(data[i : i + APPEND_CHUNK_BYTES])
+    bc.upload_blob(compressed_data, overwrite=True)
 
 
 def get_partition_id(evt: func.EventHubEvent) -> Optional[str]:
@@ -294,6 +355,39 @@ def get_partition_id(evt: func.EventHubEvent) -> Optional[str]:
     return None
 
 
+def get_offset_info(evt: func.EventHubEvent) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Extract offset and sequence number from EventHubEvent metadata.
+    Returns a tuple of (offset, sequence_number).
+    """
+    try:
+        md = evt.metadata  # type: ignore[attr-defined]
+    except Exception:
+        return None, None
+
+    if not isinstance(md, dict):
+        return None, None
+
+    offset = None
+    sequence = None
+
+    # Extract offset
+    for k in ("offset", "x-opt-offset", "Offset"):
+        v = md.get(k)
+        if v is not None:
+            offset = str(v)
+            break
+
+    # Extract sequence number
+    for k in ("sequence_number", "x-opt-sequence-number", "SequenceNumber"):
+        v = md.get(k)
+        if v is not None:
+            sequence = str(v)
+            break
+
+    return offset, sequence
+
+
 # =============================================================================
 # Function entrypoint
 # =============================================================================
@@ -308,47 +402,85 @@ def main(evt: func.EventHubEvent):
     Event Hub Trigger:
       - Parse incoming payload to records
       - Extract FQDN from message ("Host: ...")
-      - Append as NDJSON lines into an Append Blob per day and per FQDN container
+      - Extract timestamp from each record
+      - Upload as compressed NDJSON to Block Blob with Hive-style partitioning
+      - Records with different hours are split into separate files
     """
     raw = evt.get_body().decode("utf-8", errors="replace")
     records = extract_records(raw)
 
-    now_utc = datetime.now(timezone.utc)
     partition_id = get_partition_id(evt)
-    blob_name = daily_blob_name(now_utc, partition_id)
-
-    # Cache within one invocation to reduce repeated exists()/create calls
-    container_ready: Dict[str, bool] = {}
-    blob_client_cache: Dict[Tuple[str, str], Any] = {}
-
+    offset, sequence_number = get_offset_info(evt)
+    
+    # Fallback timestamp for records without valid timestamps
+    now_utc = datetime.now(timezone.utc)
+    
+    # Group records by (FQDN, timestamp_hour) for proper Hive partitioning
+    # Key: (fqdn, timestamp_hour_string)
+    records_by_fqdn_and_hour: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
+    
     for r in records:
         msg = pick_message(r)
         fqdn = extract_fqdn(r, msg)
-        container = to_container_name(fqdn)
-
-        # One NDJSON line per record
+        
+        # Extract timestamp from record, fall back to current time
+        record_time = extract_record_time(r)
+        if record_time is None:
+            record_time = now_utc
+        
+        # Generate hour key for grouping (ensures records from same hour go together)
+        hour_key = record_time.strftime("%Y-%m-%d-%H")
+        
+        group_key = (fqdn, hour_key)
+        if group_key not in records_by_fqdn_and_hour:
+            records_by_fqdn_and_hour[group_key] = []
+        
+        # Build line object (keep datetime object for later use)
         line_obj = {
-            "time_utc": now_utc.isoformat(),
+            "time_utc": record_time.isoformat(),
             "fqdn": fqdn,
             "partition_id": partition_id,
+            "offset": offset,
+            "sequence_number": sequence_number,
             "message": msg,
             "record": r,  # Remove if you want smaller output
+            "_record_time": record_time,  # Keep datetime for blob naming
         }
-        line = json.dumps(line_obj, ensure_ascii=False) + "\n"
+        records_by_fqdn_and_hour[group_key].append(line_obj)
 
-        if container not in container_ready:
-            ensure_container(container)
-            container_ready[container] = True
-
-        key = (container, blob_name)
-        if key not in blob_client_cache:
-            blob_client_cache[key] = ensure_append_blob(container, blob_name)
-
-        append_text(blob_client_cache[key], line)
+    # Upload one blob per (FQDN, hour) combination
+    # This ensures records from different hours are split into separate files
+    for (fqdn, hour_key), fqdn_hour_records in records_by_fqdn_and_hour.items():
+        container = to_container_name(fqdn)
+        ensure_container(container)
+        
+        # Use the timestamp of the first record in the group for blob naming
+        # All records in this group are from the same hour
+        first_record_time = fqdn_hour_records[0]["_record_time"]
+        
+        # Use offset and sequence for file naming
+        # For batch processing, use the first offset as start and last as end
+        # In Event Hub triggers, each event typically has a single offset
+        start_offset = offset
+        end_offset = offset
+        
+        blob_name = blob_name_with_offsets(first_record_time, partition_id, start_offset, end_offset)
+        
+        # Build NDJSON content (remove internal _record_time field before serialization)
+        lines = []
+        for line_obj in fqdn_hour_records:
+            # Create a copy without the internal field
+            output_obj = {k: v for k, v in line_obj.items() if k != "_record_time"}
+            lines.append(json.dumps(output_obj, ensure_ascii=False))
+        content = "\n".join(lines) + "\n"
+        
+        # Upload compressed blob
+        upload_compressed_blob(container, blob_name, content)
 
     logging.info(
-        "Processed %d record(s). container_count=%d shard_by_partition=%s",
+        "Processed %d record(s) across %d group(s) (FQDN+hour). partition=%s offset=%s",
         len(records),
-        len(container_ready),
-        SHARD_BY_PARTITION,
+        len(records_by_fqdn_and_hour),
+        partition_id,
+        offset,
     )

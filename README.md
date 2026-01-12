@@ -10,9 +10,10 @@ Azure App Service のコンソールログを Azure Event Hubs 経由で受信�
 
 - **Event Hubs トリガー**: App Service の診断ログストリーミングを自動受信
 - **FQDN 抽出と分離**: ログメッセージから FQDN を抽出し、コンテナごとに分離保存
-- **日次 Append Blob**: `YYYY/MM/DD/console.ndjson` の形式で日付ごとにログを追記
+- **Hive スタイルパーティショニング**: `y=YYYY/m=MM/d=DD/h=HH/m=00/p=<partition>` の形式で時間ごとにログを整理
+- **gzip 圧縮**: ストレージコストを削減するための自動圧縮
+- **オフセットトラッキング**: Event Hub のオフセット情報をファイル名に含めて追跡
 - **複数認証方式**: 接続文字列またはマネージド ID に対応
-- **高スループット対応**: パーティション ID によるシャーディングをサポート
 
 ## アーキテクチャ
 
@@ -78,9 +79,10 @@ func start
 
 主要なロジックは `function_app.py` に実装されています：
 
-1. **ログの正規化処理を変更**: `normalize_payload()` 関数を編集
+1. **ログの正規化処理を変更**: `extract_records()` 関数を編集
 2. **FQDN 抽出ロジックを変更**: `extract_fqdn()` 関数を編集
-3. **Blob 保存形式を変更**: `write_to_blob()` 関数を編集
+3. **Blob パス生成を変更**: `blob_name_with_offsets()` 関数を編集
+4. **Blob アップロード処理を変更**: `upload_compressed_blob()` 関数を編集
 
 ### テスト
 
@@ -199,21 +201,36 @@ AzureWebJobsStorage = UseDevelopmentStorage=true
 
 ### Blob Storage 構造
 
+Hive スタイルのパーティショニングと gzip 圧縮を使用した新しい形式:
+
 ```
 コンテナ: logs-example-com
-  └── 2026/
-      └── 01/
-          └── 10/
-              └── console.ndjson
+  └── y=2026/
+      └── m=01/
+          └── d=10/
+              └── h=06/
+                  └── m=00/
+                      └── p=0/
+                          └── part-o1234567890-o1234567900.ndjson.gz
 ```
+
+パス形式: `y=<YYYY>/m=<MM>/d=<DD>/h=<HH>/m=00/p=<partition_id>/part-o<startOffset>-o<endOffset>.ndjson.gz`
+
+- `y=YYYY`: 年
+- `m=MM`: 月
+- `d=DD`: 日
+- `h=HH`: 時間（UTC）
+- `m=00`: 分（固定値）
+- `p=<partition_id>`: Event Hub パーティション ID
+- `part-o<startOffset>-o<endOffset>.ndjson.gz`: オフセット範囲を含む圧縮ファイル
 
 ### NDJSON 形式
 
-各行が1つの JSON オブジェクト:
+各行が1つの JSON オブジェクト（gzip 圧縮済み）:
 
 ```json
-{"time": "2026-01-10T12:34:56Z", "level": "INFO", "message": "Request received", "host": "example.com"}
-{"time": "2026-01-10T12:34:57Z", "level": "ERROR", "message": "Connection timeout", "host": "example.com"}
+{"time_utc": "2026-01-10T12:34:56.123456+00:00", "fqdn": "example.com", "partition_id": "0", "offset": "1234567890", "sequence_number": "12345", "message": "Request received", "record": {...}}
+{"time_utc": "2026-01-10T12:34:57.234567+00:00", "fqdn": "example.com", "partition_id": "0", "offset": "1234567891", "sequence_number": "12346", "message": "Connection timeout", "record": {...}}
 ```
 
 ## トラブルシューティング
