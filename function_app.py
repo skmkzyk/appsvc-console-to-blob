@@ -435,7 +435,7 @@ def main(evt: func.EventHubEvent):
         if group_key not in records_by_fqdn_and_hour:
             records_by_fqdn_and_hour[group_key] = []
         
-        # Build line object
+        # Build line object (keep datetime object for later use)
         line_obj = {
             "time_utc": record_time.isoformat(),
             "fqdn": fqdn,
@@ -444,6 +444,7 @@ def main(evt: func.EventHubEvent):
             "sequence_number": sequence_number,
             "message": msg,
             "record": r,  # Remove if you want smaller output
+            "_record_time": record_time,  # Keep datetime for blob naming
         }
         records_by_fqdn_and_hour[group_key].append(line_obj)
 
@@ -455,7 +456,7 @@ def main(evt: func.EventHubEvent):
         
         # Use the timestamp of the first record in the group for blob naming
         # All records in this group are from the same hour
-        first_record_time = datetime.fromisoformat(fqdn_hour_records[0]["time_utc"])
+        first_record_time = fqdn_hour_records[0]["_record_time"]
         
         # Use offset and sequence for file naming
         # For batch processing, use the first offset as start and last as end
@@ -465,8 +466,12 @@ def main(evt: func.EventHubEvent):
         
         blob_name = blob_name_with_offsets(first_record_time, partition_id, start_offset, end_offset)
         
-        # Build NDJSON content
-        lines = [json.dumps(line_obj, ensure_ascii=False) for line_obj in fqdn_hour_records]
+        # Build NDJSON content (remove internal _record_time field before serialization)
+        lines = []
+        for line_obj in fqdn_hour_records:
+            # Create a copy without the internal field
+            output_obj = {k: v for k, v in line_obj.items() if k != "_record_time"}
+            lines.append(json.dumps(output_obj, ensure_ascii=False))
         content = "\n".join(lines) + "\n"
         
         # Upload compressed blob
