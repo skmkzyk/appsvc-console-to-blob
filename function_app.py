@@ -235,11 +235,16 @@ def blob_name_with_offsets(
     Args:
         now_utc: Current UTC datetime
         partition_id: Event Hub partition ID
-        start_offset: Starting offset of the batch
-        end_offset: Ending offset of the batch
+        start_offset: Starting offset of the batch (for single events, same as end_offset)
+        end_offset: Ending offset of the batch (for single events, same as start_offset)
     
     Returns:
         Blob path string
+    
+    Notes:
+        - The minute directory is fixed at '00' to aggregate all events within the same hour
+        - For single Event Hub events, start_offset and end_offset will be identical
+        - Using 'unknown' for missing offsets will fall back to timestamp-based identification
     """
     # Hive-style partitioning
     year = now_utc.strftime("%Y")
@@ -247,15 +252,21 @@ def blob_name_with_offsets(
     day = now_utc.strftime("%d")
     hour = now_utc.strftime("%H")
     
-    # Fixed minute directory
+    # Fixed minute directory (aggregates all events within the hour)
     minute = "00"
     
     # Partition ID (use "unknown" if not available)
     partition = partition_id if partition_id else "unknown"
     
-    # Offset-based filename
-    start = start_offset if start_offset else "unknown"
-    end = end_offset if end_offset else "unknown"
+    # Offset-based filename with timestamp fallback for uniqueness
+    if start_offset and end_offset:
+        start = start_offset
+        end = end_offset
+    else:
+        # Fallback: use timestamp for uniqueness when offset is unavailable
+        timestamp_id = now_utc.strftime("%Y%m%d%H%M%S%f")
+        start = timestamp_id
+        end = timestamp_id
     
     filename = f"part-o{start}-o{end}.ndjson.gz"
     
@@ -283,11 +294,16 @@ def upload_compressed_blob(container_name: str, blob_name: str, content: str) ->
         container_name: Target container name
         blob_name: Target blob path
         content: Text content to compress and upload
+    
+    Notes:
+        - Uses overwrite=True for idempotency in case of function retries
+        - Each FQDN uses a separate container, so blob_name collisions only occur
+          for the same FQDN with the same offset, which indicates a retry
     """
     # Compress the content
     compressed_data = gzip.compress(content.encode("utf-8"))
     
-    # Upload as block blob
+    # Upload as block blob (overwrite for idempotency)
     bc = blob_service_client().get_blob_client(container=container_name, blob=blob_name)
     bc.upload_blob(compressed_data, overwrite=True)
 
