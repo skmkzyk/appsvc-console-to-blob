@@ -168,6 +168,8 @@ az functionapp create \
 **Note**: The following commands use shell variables. Set them according to your environment:
 - `$RG`: Resource group name
 - `$FUNCAPP`: Function app name
+- `$HOSTSA`: Storage account name for hosting the Function App
+- `$LOC`: Azure region (e.g., `eastus`, `westus2`, `japaneast`)
 - `$PRINCIPAL_ID`: Managed identity principal ID (obtained from step 2)
 - `$SUBSCRIPTION_ID`: Your Azure subscription ID
 - `$EVENTHUB_NAMESPACE`: Event Hub namespace name

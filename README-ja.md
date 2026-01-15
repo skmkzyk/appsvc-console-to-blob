@@ -168,6 +168,8 @@ az functionapp create \
 **注意**: 以下のコマンドではシェル変数を使用します。環境に応じて設定してください：
 - `$RG`: リソースグループ名
 - `$FUNCAPP`: 関数アプリ名
+- `$HOSTSA`: Function App のホスティング用ストレージアカウント名
+- `$LOC`: Azure リージョン（例: `eastus`、`westus2`、`japaneast`）
 - `$PRINCIPAL_ID`: マネージド ID のプリンシパル ID（手順 2 で取得）
 - `$SUBSCRIPTION_ID`: Azure サブスクリプション ID
 - `$EVENTHUB_NAMESPACE`: Event Hub 名前空間名
