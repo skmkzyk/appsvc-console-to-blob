@@ -27,6 +27,20 @@ Azure Functions (Event Hub Trigger)
 Azure Blob Storage (NDJSON)
 ```
 
+### Why Not Use Blob Output Bindings?
+
+This function uses the Azure Blob Storage SDK directly instead of blob output bindings for the following reasons:
+
+1. **Dynamic Container Selection**: The target container name is determined at runtime based on the FQDN extracted from each log message. Output bindings require the container name to be known at function definition time.
+
+2. **Complex Blob Path Generation**: Uses Hive-style partitioning with dynamic paths like `y=2026/m=01/d=10/h=06/m=00/p=0/part-o1234567890.ndjson.gz`. Output bindings support limited path templating and cannot generate this structure.
+
+3. **Compression**: Applies gzip compression to reduce storage costs. Output bindings don't support compression, so the SDK is needed to compress data before upload.
+
+4. **Batching and Grouping**: Groups records by FQDN and hour before writing. A single function invocation may write to multiple containers and multiple blobs, which output bindings don't support well.
+
+5. **Advanced Features**: Uses Block Blobs with overwrite for idempotency. Output bindings have limited control over blob type and upload behavior.
+
 ## Requirements
 
 - Python 3.9 or higher
