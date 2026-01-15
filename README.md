@@ -117,18 +117,69 @@ black function_app.py
 ruff format function_app.py
 ```
 
+## Creating Azure Functions Resource
+
+Before deploying the function code, you need to create an Azure Functions resource. This section describes how to create a Flex Consumption SKU function app.
+
+### Prerequisites
+
+- Azure CLI installed
+- Logged in to Azure (`az login`)
+- Resource group already created
+- Storage account for hosting already created
+
+### Create Function App (Flex Consumption SKU)
+
+```bash
+az functionapp create \
+  --resource-group "$RG" \
+  --name "$FUNCAPP" \
+  --storage-account "$HOSTSA" \
+  --flexconsumption-location "$LOC" \
+  --runtime python \
+  --runtime-version 3.11
+```
+
+Replace the variables with your values:
+- `$RG`: Your resource group name (e.g., `my-resource-group`)
+- `$FUNCAPP`: Your function app name (e.g., `my-log-processor-func`)
+- `$HOSTSA`: Your storage account name for hosting (e.g., `myhostingstorageacct`)
+- `$LOC`: Your Azure region (e.g., `eastus`, `westus2`, `japaneast`)
+
+Example:
+```bash
+az functionapp create \
+  --resource-group "my-resource-group" \
+  --name "my-log-processor-func" \
+  --storage-account "myhostingstorageacct" \
+  --flexconsumption-location "japaneast" \
+  --runtime python \
+  --runtime-version 3.11
+```
+
 ## Deployment Steps
 
 ### Prerequisites
 
-- Azure Functions resource already created
+- Azure Functions resource created (see "Creating Azure Functions Resource" section above)
 - Azure CLI installed
 - Logged in to Azure (`az login`)
+
+**Note**: The following commands use shell variables. Set them according to your environment:
+- `$RG`: Resource group name
+- `$FUNCAPP`: Function app name
+- `$HOSTSA`: Storage account name for hosting the Function App
+- `$LOC`: Azure region (e.g., `eastus`, `westus2`, `japaneast`)
+- `$PRINCIPAL_ID`: Managed identity principal ID (obtained from step 2)
+- `$SUBSCRIPTION_ID`: Your Azure subscription ID
+- `$EVENTHUB_NAMESPACE`: Event Hub namespace name
+- `$EVENTHUB_NAME`: Event Hub name
+- `$LOG_STORAGE_ACCOUNT`: Storage account name for log storage
 
 ### 1. Deploy to Function App
 
 ```bash
-func azure functionapp publish "<YourFunctionAppName>" --python
+func azure functionapp publish "$FUNCAPP" --python
 ```
 
 Example:
@@ -140,26 +191,26 @@ func azure functionapp publish "my-log-processor-func" --python
 
 ```bash
 az functionapp identity assign \
-  --name "<YourFunctionAppName>" \
-  --resource-group "<YourResourceGroup>"
+  --name "$FUNCAPP" \
+  --resource-group "$RG"
 ```
 
 ### 3. Grant Access to Event Hubs
 
 ```bash
 az role assignment create \
-  --assignee "<Managed Identity Principal ID>" \
+  --assignee "$PRINCIPAL_ID" \
   --role "Azure Event Hubs Data Receiver" \
-  --scope "/subscriptions/<Subscription ID>/resourceGroups/<Resource Group>/providers/Microsoft.EventHub/namespaces/<Namespace>/eventhubs/<Event Hub Name>"
+  --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RG/providers/Microsoft.EventHub/namespaces/$EVENTHUB_NAMESPACE/eventhubs/$EVENTHUB_NAME"
 ```
 
 ### 4. Grant Access to Blob Storage
 
 ```bash
 az role assignment create \
-  --assignee "<Managed Identity Principal ID>" \
+  --assignee "$PRINCIPAL_ID" \
   --role "Storage Blob Data Contributor" \
-  --scope "/subscriptions/<Subscription ID>/resourceGroups/<Resource Group>/providers/Microsoft.Storage/storageAccounts/<Storage Account Name>"
+  --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RG/providers/Microsoft.Storage/storageAccounts/$LOG_STORAGE_ACCOUNT"
 ```
 
 ### 5. Configure Environment Variables
@@ -168,20 +219,20 @@ Set environment variables using Azure Portal or Azure CLI:
 
 ```bash
 az functionapp config appsettings set \
-  --name "<YourFunctionAppName>" \
-  --resource-group "<YourResourceGroup>" \
+  --name "$FUNCAPP" \
+  --resource-group "$RG" \
   --settings \
-    "EventHubConnection__fullyQualifiedNamespace=<namespace>.servicebus.windows.net" \
+    "EventHubConnection__fullyQualifiedNamespace=${EVENTHUB_NAMESPACE}.servicebus.windows.net" \
     "EventHubConnection__credential=managedidentity" \
-    "EVENTHUB_NAME=<Event Hub Name>" \
-    "LOG_STORAGE_ACCOUNT_NAME=<Storage Account Name>"
+    "EVENTHUB_NAME=$EVENTHUB_NAME" \
+    "LOG_STORAGE_ACCOUNT_NAME=$LOG_STORAGE_ACCOUNT"
 ```
 
 ### 6. Verify Deployment
 
 ```bash
 # Check log stream
-func azure functionapp logstream "<YourFunctionAppName>"
+func azure functionapp logstream "$FUNCAPP"
 ```
 
 Or check from the "Log stream" in Azure Portal.
@@ -251,7 +302,7 @@ Each line is a single JSON object (gzip compressed):
 
 ### Logs Are Not Being Saved
 
-1. Check Function App logs: `func azure functionapp logstream "<YourFunctionAppName>"`
+1. Check Function App logs: `func azure functionapp logstream "$FUNCAPP"`
 2. Verify managed identity permissions
 3. Verify Event Hub connection
 

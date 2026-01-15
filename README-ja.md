@@ -117,18 +117,69 @@ black function_app.py
 ruff format function_app.py
 ```
 
+## Azure Functions リソースの作成
+
+関数コードをデプロイする前に、Azure Functions リソースを作成する必要があります。このセクションでは、Flex Consumption SKU の関数アプリを作成する方法を説明します。
+
+### 前提条件
+
+- Azure CLI がインストール済み
+- Azure にログイン済み (`az login`)
+- リソースグループが作成済み
+- ホスティング用のストレージアカウントが作成済み
+
+### Function App の作成（Flex Consumption SKU）
+
+```bash
+az functionapp create \
+  --resource-group "$RG" \
+  --name "$FUNCAPP" \
+  --storage-account "$HOSTSA" \
+  --flexconsumption-location "$LOC" \
+  --runtime python \
+  --runtime-version 3.11
+```
+
+変数を実際の値に置き換えてください：
+- `$RG`: リソースグループ名（例: `my-resource-group`）
+- `$FUNCAPP`: 関数アプリ名（例: `my-log-processor-func`）
+- `$HOSTSA`: ホスティング用ストレージアカウント名（例: `myhostingstorageacct`）
+- `$LOC`: Azure リージョン（例: `eastus`、`westus2`、`japaneast`）
+
+例:
+```bash
+az functionapp create \
+  --resource-group "my-resource-group" \
+  --name "my-log-processor-func" \
+  --storage-account "myhostingstorageacct" \
+  --flexconsumption-location "japaneast" \
+  --runtime python \
+  --runtime-version 3.11
+```
+
 ## デプロイ手順
 
 ### 前提条件
 
-- Azure Functions リソースが作成済み
+- Azure Functions リソースが作成済み（上記の「Azure Functions リソースの作成」セクションを参照）
 - Azure CLI がインストール済み
 - Azure にログイン済み (`az login`)
+
+**注意**: 以下のコマンドではシェル変数を使用します。環境に応じて設定してください：
+- `$RG`: リソースグループ名
+- `$FUNCAPP`: 関数アプリ名
+- `$HOSTSA`: Function App のホスティング用ストレージアカウント名
+- `$LOC`: Azure リージョン（例: `eastus`、`westus2`、`japaneast`）
+- `$PRINCIPAL_ID`: マネージド ID のプリンシパル ID（手順 2 で取得）
+- `$SUBSCRIPTION_ID`: Azure サブスクリプション ID
+- `$EVENTHUB_NAMESPACE`: Event Hub 名前空間名
+- `$EVENTHUB_NAME`: Event Hub 名
+- `$LOG_STORAGE_ACCOUNT`: ログ保存用ストレージアカウント名
 
 ### 1. Function App へのデプロイ
 
 ```bash
-func azure functionapp publish "<YourFunctionAppName>" --python
+func azure functionapp publish "$FUNCAPP" --python
 ```
 
 例:
@@ -140,26 +191,26 @@ func azure functionapp publish "my-log-processor-func" --python
 
 ```bash
 az functionapp identity assign \
-  --name "<YourFunctionAppName>" \
-  --resource-group "<YourResourceGroup>"
+  --name "$FUNCAPP" \
+  --resource-group "$RG"
 ```
 
 ### 3. Event Hubs へのアクセス権付与
 
 ```bash
 az role assignment create \
-  --assignee "<マネージド ID のプリンシパル ID>" \
+  --assignee "$PRINCIPAL_ID" \
   --role "Azure Event Hubs Data Receiver" \
-  --scope "/subscriptions/<サブスクリプション ID>/resourceGroups/<リソースグループ>/providers/Microsoft.EventHub/namespaces/<名前空間>/eventhubs/<Event Hub 名>"
+  --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RG/providers/Microsoft.EventHub/namespaces/$EVENTHUB_NAMESPACE/eventhubs/$EVENTHUB_NAME"
 ```
 
 ### 4. Blob Storage へのアクセス権付与
 
 ```bash
 az role assignment create \
-  --assignee "<マネージド ID のプリンシパル ID>" \
+  --assignee "$PRINCIPAL_ID" \
   --role "Storage Blob Data Contributor" \
-  --scope "/subscriptions/<サブスクリプション ID>/resourceGroups/<リソースグループ>/providers/Microsoft.Storage/storageAccounts/<ストレージアカウント名>"
+  --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RG/providers/Microsoft.Storage/storageAccounts/$LOG_STORAGE_ACCOUNT"
 ```
 
 ### 5. 環境変数の設定
@@ -168,20 +219,20 @@ Azure Portal または Azure CLI で環境変数を設定:
 
 ```bash
 az functionapp config appsettings set \
-  --name "<YourFunctionAppName>" \
-  --resource-group "<YourResourceGroup>" \
+  --name "$FUNCAPP" \
+  --resource-group "$RG" \
   --settings \
-    "EventHubConnection__fullyQualifiedNamespace=<namespace>.servicebus.windows.net" \
+    "EventHubConnection__fullyQualifiedNamespace=${EVENTHUB_NAMESPACE}.servicebus.windows.net" \
     "EventHubConnection__credential=managedidentity" \
-    "EVENTHUB_NAME=<Event Hub 名>" \
-    "LOG_STORAGE_ACCOUNT_NAME=<ストレージアカウント名>"
+    "EVENTHUB_NAME=$EVENTHUB_NAME" \
+    "LOG_STORAGE_ACCOUNT_NAME=$LOG_STORAGE_ACCOUNT"
 ```
 
 ### 6. デプロイの確認
 
 ```bash
 # ログストリームを確認
-func azure functionapp logstream "<YourFunctionAppName>"
+func azure functionapp logstream "$FUNCAPP"
 ```
 
 または Azure Portal の「ログストリーム」から確認できます。
@@ -251,7 +302,7 @@ Hive スタイルのパーティショニングと gzip 圧縮を使用した新
 
 ### ログが保存されない
 
-1. Function App のログを確認: `func azure functionapp logstream "<YourFunctionAppName>"`
+1. Function App のログを確認: `func azure functionapp logstream "$FUNCAPP"`
 2. マネージド ID の権限を確認
 3. Event Hub への接続を確認
 
