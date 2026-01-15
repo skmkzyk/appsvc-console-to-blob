@@ -165,10 +165,19 @@ az functionapp create \
 - Azure CLI がインストール済み
 - Azure にログイン済み (`az login`)
 
+**注意**: 以下のコマンドではシェル変数を使用します。環境に応じて設定してください：
+- `$RG`: リソースグループ名
+- `$FUNCAPP`: 関数アプリ名
+- `$PRINCIPAL_ID`: マネージド ID のプリンシパル ID（手順 2 で取得）
+- `$SUBSCRIPTION_ID`: Azure サブスクリプション ID
+- `$EVENTHUB_NAMESPACE`: Event Hub 名前空間名
+- `$EVENTHUB_NAME`: Event Hub 名
+- `$LOG_STORAGE_ACCOUNT`: ログ保存用ストレージアカウント名
+
 ### 1. Function App へのデプロイ
 
 ```bash
-func azure functionapp publish "<YourFunctionAppName>" --python
+func azure functionapp publish "$FUNCAPP" --python
 ```
 
 例:
@@ -180,26 +189,26 @@ func azure functionapp publish "my-log-processor-func" --python
 
 ```bash
 az functionapp identity assign \
-  --name "<YourFunctionAppName>" \
-  --resource-group "<YourResourceGroup>"
+  --name "$FUNCAPP" \
+  --resource-group "$RG"
 ```
 
 ### 3. Event Hubs へのアクセス権付与
 
 ```bash
 az role assignment create \
-  --assignee "<マネージド ID のプリンシパル ID>" \
+  --assignee "$PRINCIPAL_ID" \
   --role "Azure Event Hubs Data Receiver" \
-  --scope "/subscriptions/<サブスクリプション ID>/resourceGroups/<リソースグループ>/providers/Microsoft.EventHub/namespaces/<名前空間>/eventhubs/<Event Hub 名>"
+  --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RG/providers/Microsoft.EventHub/namespaces/$EVENTHUB_NAMESPACE/eventhubs/$EVENTHUB_NAME"
 ```
 
 ### 4. Blob Storage へのアクセス権付与
 
 ```bash
 az role assignment create \
-  --assignee "<マネージド ID のプリンシパル ID>" \
+  --assignee "$PRINCIPAL_ID" \
   --role "Storage Blob Data Contributor" \
-  --scope "/subscriptions/<サブスクリプション ID>/resourceGroups/<リソースグループ>/providers/Microsoft.Storage/storageAccounts/<ストレージアカウント名>"
+  --scope "/subscriptions/$SUBSCRIPTION_ID/resourceGroups/$RG/providers/Microsoft.Storage/storageAccounts/$LOG_STORAGE_ACCOUNT"
 ```
 
 ### 5. 環境変数の設定
@@ -208,20 +217,20 @@ Azure Portal または Azure CLI で環境変数を設定:
 
 ```bash
 az functionapp config appsettings set \
-  --name "<YourFunctionAppName>" \
-  --resource-group "<YourResourceGroup>" \
+  --name "$FUNCAPP" \
+  --resource-group "$RG" \
   --settings \
-    "EventHubConnection__fullyQualifiedNamespace=<namespace>.servicebus.windows.net" \
+    "EventHubConnection__fullyQualifiedNamespace=${EVENTHUB_NAMESPACE}.servicebus.windows.net" \
     "EventHubConnection__credential=managedidentity" \
-    "EVENTHUB_NAME=<Event Hub 名>" \
-    "LOG_STORAGE_ACCOUNT_NAME=<ストレージアカウント名>"
+    "EVENTHUB_NAME=$EVENTHUB_NAME" \
+    "LOG_STORAGE_ACCOUNT_NAME=$LOG_STORAGE_ACCOUNT"
 ```
 
 ### 6. デプロイの確認
 
 ```bash
 # ログストリームを確認
-func azure functionapp logstream "<YourFunctionAppName>"
+func azure functionapp logstream "$FUNCAPP"
 ```
 
 または Azure Portal の「ログストリーム」から確認できます。
@@ -291,7 +300,7 @@ Hive スタイルのパーティショニングと gzip 圧縮を使用した新
 
 ### ログが保存されない
 
-1. Function App のログを確認: `func azure functionapp logstream "<YourFunctionAppName>"`
+1. Function App のログを確認: `func azure functionapp logstream "$FUNCAPP"`
 2. マネージド ID の権限を確認
 3. Event Hub への接続を確認
 
