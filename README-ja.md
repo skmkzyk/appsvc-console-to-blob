@@ -117,11 +117,51 @@ black function_app.py
 ruff format function_app.py
 ```
 
+## Azure Functions リソースの作成
+
+関数コードをデプロイする前に、Azure Functions リソースを作成する必要があります。このセクションでは、Flex Consumption SKU の関数アプリを作成する方法を説明します。
+
+### 前提条件
+
+- Azure CLI がインストール済み
+- Azure にログイン済み (`az login`)
+- リソースグループが作成済み
+- ホスティング用のストレージアカウントが作成済み
+
+### Function App の作成（Flex Consumption SKU）
+
+```bash
+az functionapp create \
+  --resource-group "$RG" \
+  --name "$FUNCAPP" \
+  --storage-account "$HOSTSA" \
+  --flexconsumption-location "$LOC" \
+  --runtime python \
+  --runtime-version 3.11
+```
+
+変数を実際の値に置き換えてください：
+- `$RG`: リソースグループ名（例: `my-resource-group`）
+- `$FUNCAPP`: 関数アプリ名（例: `my-log-processor-func`）
+- `$HOSTSA`: ホスティング用ストレージアカウント名（例: `myhostingstorageacct`）
+- `$LOC`: Azure リージョン（例: `eastus`、`westus2`、`japaneast`）
+
+例:
+```bash
+az functionapp create \
+  --resource-group "my-resource-group" \
+  --name "my-log-processor-func" \
+  --storage-account "myhostingstorageacct" \
+  --flexconsumption-location "japaneast" \
+  --runtime python \
+  --runtime-version 3.11
+```
+
 ## デプロイ手順
 
 ### 前提条件
 
-- Azure Functions リソースが作成済み
+- Azure Functions リソースが作成済み（上記の「Azure Functions リソースの作成」セクションを参照）
 - Azure CLI がインストール済み
 - Azure にログイン済み (`az login`)
 

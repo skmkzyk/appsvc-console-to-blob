@@ -117,11 +117,51 @@ black function_app.py
 ruff format function_app.py
 ```
 
+## Creating Azure Functions Resource
+
+Before deploying the function code, you need to create an Azure Functions resource. This section describes how to create a Flex Consumption SKU function app.
+
+### Prerequisites
+
+- Azure CLI installed
+- Logged in to Azure (`az login`)
+- Resource group already created
+- Storage account for hosting already created
+
+### Create Function App (Flex Consumption SKU)
+
+```bash
+az functionapp create \
+  --resource-group "$RG" \
+  --name "$FUNCAPP" \
+  --storage-account "$HOSTSA" \
+  --flexconsumption-location "$LOC" \
+  --runtime python \
+  --runtime-version 3.11
+```
+
+Replace the variables with your values:
+- `$RG`: Your resource group name (e.g., `my-resource-group`)
+- `$FUNCAPP`: Your function app name (e.g., `my-log-processor-func`)
+- `$HOSTSA`: Your storage account name for hosting (e.g., `myhostingstorageacct`)
+- `$LOC`: Your Azure region (e.g., `eastus`, `westus2`, `japaneast`)
+
+Example:
+```bash
+az functionapp create \
+  --resource-group "my-resource-group" \
+  --name "my-log-processor-func" \
+  --storage-account "myhostingstorageacct" \
+  --flexconsumption-location "japaneast" \
+  --runtime python \
+  --runtime-version 3.11
+```
+
 ## Deployment Steps
 
 ### Prerequisites
 
-- Azure Functions resource already created
+- Azure Functions resource created (see "Creating Azure Functions Resource" section above)
 - Azure CLI installed
 - Logged in to Azure (`az login`)
 
