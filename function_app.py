@@ -457,7 +457,6 @@ def main(evt: func.EventHubEvent):
             "offset": offset,
             "sequence_number": sequence_number,
             "message": msg,
-            "record": r,  # Remove if you want smaller output
             "_record_time": record_time,  # Keep datetime for blob naming
         }
         records_by_fqdn_and_hour[group_key].append(line_obj)
